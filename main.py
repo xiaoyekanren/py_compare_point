@@ -1,7 +1,10 @@
 # coding=utf-8
 from iotdb.Session import Session
+import threading
 
 query_step_size_row = 200000  # 每次查询的行，统计、对比时间序列，统计、对比点数
+query_threads = 20
+
 
 a_host, a_port, a_user, a_pass = '127.0.0.1,6667,root,root'.split(',')
 b_host, b_port, b_user, b_pass = '127.0.0.1,6667,root,root'.split(',')
@@ -127,11 +130,27 @@ def get_ts_from_session_ts_list(session1_list):
 
 
 def compare_point_avg_ts(s1, s2, ts_list):
-    for ts in ts_list:  # 使用哪个ts都一样，走到这里了，list完全一致
+    threads = []
+    step = 0
+    count_ts_list = len(ts_list)
+
+    for index, ts in enumerate(ts_list):  # 使用哪个ts都一样，走到这里了，list完全一致
         series_path, series_name = '.'.join(ts.split('.')[:-1]), ts.split('.')[-1]
         count_base_sql = f'select count({series_name}) from {series_path}'
         select_base_sql = f'select {series_name} from {series_path}'
-        compare_ts_or_point(s1, s2, count_base_sql, select_base_sql)
+
+        if step >= query_threads or index + 1 == count_ts_list:
+            for thread in threads:
+                thread.start()
+            for thread in threads:
+                thread.join()
+            step = 0
+        else:
+            threads.append(
+                threading.Thread(target=compare_ts_or_point, args=(s1, s2, count_base_sql, select_base_sql))
+            )
+            print(f'info: add Thread, {count_base_sql},{select_base_sql}')
+            step += 1
 
 
 def main():

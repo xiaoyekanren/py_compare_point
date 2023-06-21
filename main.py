@@ -1,10 +1,10 @@
 # coding=utf-8
 from iotdb.Session import Session
 
-query_step_size_row = 200000  # 每次查询的行，统计、对比时间序列，统计、对比点数
+query_step_size_row = 100000  # 每次查询的行，统计、对比时间序列，统计、对比点数
 
-a_host, a_port, a_user, a_pass = '127.0.0.1,6667,root,root'.split(',')
-b_host, b_port, b_user, b_pass = '127.0.0.1,6667,root,root'.split(',')
+a_host, a_port, a_user, a_pass = '172.20.31.24,6667,root,root'.split(',')
+b_host, b_port, b_user, b_pass = '172.20.31.16,6667,root,root'.split(',')
 
 session1 = Session(a_host, a_port, a_user, a_pass)
 session2 = Session(b_host, b_port, b_user, b_pass)
@@ -135,7 +135,7 @@ def compare_point_avg_ts(s1, s2, ts_list):
 
 
 def main():
-    session_one_ts_list, session_two_ts_list = compare_ts_or_point(session1, session2, 'count timeseries', 'show timeseries')  # 拿到序列，列表
+    session_one_ts_list, session_two_ts_list = compare_ts_or_point(session1, session2, 'count timeseries root.test.**', 'show timeseries root.test.**')  # 拿到序列，列表
 
     ts_list = get_ts_from_session_ts_list(session_one_ts_list)  # 加工成可以使用的时间序列，列表
 

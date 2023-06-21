@@ -1,33 +1,33 @@
 # coding=utf-8
 from iotdb.Session import Session
+import random
 
-query_step_size_row = 100000  # 每次查询的行，统计、对比时间序列，统计、对比点数
+query_step_size_row = 100000  # 每次查询的行数，不包含count
+is_random_or_all_ts_compare = 'random'
+num_of_random_ts = 100
 
-a_host, a_port, a_user, a_pass = '172.20.31.24,6667,root,root'.split(',')
-b_host, b_port, b_user, b_pass = '172.20.31.16,6667,root,root'.split(',')
+a_host, a_port, a_user, a_pass = '172.20.31.16,6667,root,root'.split(',')
+b_host, b_port, b_user, b_pass = '172.20.31.24,6667,root,root'.split(',')
 
 session1 = Session(a_host, a_port, a_user, a_pass)
 session2 = Session(b_host, b_port, b_user, b_pass)
 
 
-def compare_two_result(list1, list2, message=None):
-    if message:
-        print(message)
-
+def compare_two_result(list1, list2):
     list1 = [list1]
     list2 = [list2]
 
     if list1 == list2:
-        print('info: 2个结果集一致')
+        print('result: 2个结果集一致')
         return True
     else:
-        print('error: 结果集不一致，开始判断')
+        print('error: 结果集不一致，开始判断...')
 
     # 判断2个session的数据总数是否一致
     if len(list1) == len(list2):
-        print(f'info: 序列数量一致，{len(list1)}条，')
+        print(f'check_list: 序列数量一致，{len(list1)}条')
     else:
-        print(f'error: session_one = {len(list1)}, session_two = {len(list2)}')
+        print(f'check_list: session_one = {len(list1)}, session_two = {len(list2)}')
 
     # 判断点数是否一致
     a = []
@@ -35,13 +35,13 @@ def compare_two_result(list1, list2, message=None):
         if i in list2:
             list2.remove(i)
         else:
-            print(f'序列 "{i}" not in session2')
+            print(f'check_list: 序列 "{i}" not in session2')
             a.append(i)
     if a:
-        print(f'以下序列在session2中不存在: {a}')
+        print(f'check_list: 以下序列在session2中不存在: {a}')
 
     if list2:
-        print(f'以下序列在session1中不存在: {list2}')
+        print(f'check_list: 以下序列在session1中不存在: {list2}')
     return False
 
 
@@ -76,9 +76,12 @@ def get_results_list(s1, s2, sql, message=None):
     # print(result_list)
     if message:
         print(message)
-    if not compare_two_result(*result_list):
-        print('info: 程序退出')
-        exit()
+    if 'show timeseries' not in sql:
+        if not compare_two_result(*result_list):
+            print('error: 程序退出')
+            exit()
+    else:
+        print(f'info: 跳过 {sql}，容易因对比顺序不一致而导致失败')
     return result_list
 
 
@@ -92,7 +95,7 @@ def return_query_count(s1, s2, base_sql):
 def return_query_select(s1, s2, base_sql, count_value):
     session1_list, session2_list = [], []
     if count_value <= query_step_size_row:
-        session1_list, session2_list = get_results_list(s1, s2, sql=base_sql, message='info: 逐点对比2个iotdb的序列...')  # 获得两个iotdb序列的list
+        session1_list, session2_list = get_results_list(s1, s2, base_sql, f'sql: {base_sql}')  # 获得两个iotdb序列的list
     else:
         offset = 0
         while count_value > offset:  # 3333,1000
@@ -111,11 +114,32 @@ def return_query_select(s1, s2, base_sql, count_value):
 
 
 def compare_ts_or_point(s1, s2, count_base_sql, select_base_sql):
+    print('info: 查询&对比 count point...')
     s1_count_ts, s2_count_ts = return_query_count(s1, s2, count_base_sql)  # 拿到count timeseries的值，int
-    print(f'info: count result: {s1_count_ts}')
+    print(f'count_result: {s1_count_ts}')
 
+    print(f'info: 查询&对比 query return list...')
     session1_list, session2_list = return_query_select(s1, s2, select_base_sql, s1_count_ts)
     return session1_list, session2_list
+
+
+def return_random_ts_list(ts_list):
+    new_ts_list = []
+    count_ts_list = len(ts_list)
+
+    ts_index_list = []
+    for i in range(num_of_random_ts):
+        while True:
+            random_num = int(random.uniform(0,count_ts_list))
+            if random_num not in ts_index_list:
+                ts_index_list.append(random_num)
+                break
+
+    for index in ts_index_list:
+        new_ts_list.append(ts_list[index])
+
+    print(f'info: 已启用随机序列，将选择{num_of_random_ts}个，分别为：\n{new_ts_list}')
+    return new_ts_list
 
 
 def get_ts_from_session_ts_list(session1_list):
@@ -123,6 +147,8 @@ def get_ts_from_session_ts_list(session1_list):
     for i in range(len(session1_list)):
         ts = session1_list[i][1][0]
         ts_list.append(ts)
+    if is_random_or_all_ts_compare == 'random':
+        ts_list = return_random_ts_list(ts_list)
     return ts_list
 
 
@@ -144,8 +170,3 @@ def main():
 
 if __name__ == '__main__':
     main()
-
-
-
-
-

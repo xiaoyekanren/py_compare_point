@@ -1,16 +1,25 @@
 # coding=utf-8
 from iotdb.Session import Session
+import threading
+# from threading import Thread
 import random
+import queue
 
 query_step_size_row = 100000  # 每次查询的行数，不包含count
 is_random_or_all_ts_compare = 'random'
-num_of_random_ts = 100
+num_of_random_ts = 300
 
 a_host, a_port, a_user, a_pass = '172.20.31.16,6667,root,root'.split(',')
 b_host, b_port, b_user, b_pass = '172.20.31.24,6667,root,root'.split(',')
 
 session1 = Session(a_host, a_port, a_user, a_pass)
 session2 = Session(b_host, b_port, b_user, b_pass)
+
+ts_queue = queue.Queue()  # 用于保存需要对比的时间序列
+result_lock = threading.Lock()  # 用于控制对比结果的保存
+
+thread_num = 5  # 线程数量
+result_list = [[] for i in range(thread_num)]  # 保存每个线程的对比结果
 
 
 def compare_two_result(list1, list2):
@@ -66,23 +75,23 @@ def exec_sql(session, sql):
 
 
 def get_results_list(s1, s2, sql, message=None):
-    result_list = []
+    result_list_ = []
 
     for i in s1, s2:
         result = exec_sql(i, sql)
         if result:
-            result_list.append(result)
+            result_list_.append(result)
             # print(result)
-    # print(result_list)
+    # print(result_list_)
     if message:
         print(message)
     if 'show timeseries' not in sql:
-        if not compare_two_result(*result_list):
+        if not compare_two_result(*result_list_):
             print('error: 程序退出')
             exit()
     else:
         print(f'info: 跳过 {sql}，容易因对比顺序不一致而导致失败')
-    return result_list
+    return result_list_
 
 
 def return_query_count(s1, s2, base_sql):
@@ -113,14 +122,15 @@ def return_query_select(s1, s2, base_sql, count_value):
     return session1_list, session2_list
 
 
-def compare_ts_or_point(s1, s2, count_base_sql, select_base_sql):
+def compare_ts_or_point(s1, s2, count_base_sql, select_base_sql, result_list):
     print('info: 查询&对比 count point...')
     s1_count_ts, s2_count_ts = return_query_count(s1, s2, count_base_sql)  # 拿到count timeseries的值，int
     print(f'count_result: {s1_count_ts}')
 
     print(f'info: 查询&对比 query return list...')
     session1_list, session2_list = return_query_select(s1, s2, select_base_sql, s1_count_ts)
-    return session1_list, session2_list
+    with result_lock:
+        result_list.append([session1_list, session2_list])
 
 
 def return_random_ts_list(ts_list):
@@ -154,10 +164,22 @@ def get_ts_from_session_ts_list(session1_list):
 
 def compare_point_avg_ts(s1, s2, ts_list):
     for ts in ts_list:  # 使用哪个ts都一样，走到这里了，list完全一致
-        series_path, series_name = '.'.join(ts.split('.')[:-1]), ts.split('.')[-1]
-        count_base_sql = f'select count({series_name}) from {series_path}'
-        select_base_sql = f'select {series_name} from {series_path}'
-        compare_ts_or_point(s1, s2, count_base_sql, select_base_sql)
+        ts_queue.put(ts)
+
+
+def compare_thread(id, s1, s2, result_list):
+    while True:
+        try:
+            ts = ts_queue.get(timeout=1)
+            if ts is None:
+                break
+
+            series_path, series_name = '.'.join(ts.split('.')[:-1]), ts.split('.')[-1]
+            count_base_sql = f'select count({series_name}) from {series_path}'
+            select_base_sql = f'select {series_name} from {series_path}'
+            compare_ts_or_point(s1, s2, count_base_sql, select_base_sql, result_list[id])
+        except queue.Empty:
+            break
 
 
 def main():
@@ -167,6 +189,36 @@ def main():
 
     compare_point_avg_ts(session1, session2, ts_list)  # 对比时间序列
 
+    thread_pool = []
+    for i in range(thread_num):
+        t = threading.Thread(target=compare_thread, args=(i, session1, session2, result_list))
+        thread_pool.append(t)
+
+    for t in thread_pool:
+        t.start()
+
+    for t in thread_pool:
+        t.join()
+
+    print('比较结果：')
+    for i in result_list:
+        list1, list2 = i[0], i[1]
+        compare_two_result(list1, list2)
+
 
 if __name__ == '__main__':
     main()
+
+# 要实现并发，可以使用多线程或多进程的方式。这里提供一种多线程的实现方式：
+#
+# 1.首先，在导入模块的时候，加入 from threading import Thread 语句，导入 Thread 类。
+#
+# 2.修改 compare_ts_or_point() 函数，新增一个参数 result_list，用来保存查询结果。
+#
+# 3.在 compare_point_avg_ts() 函数中，将比较时的每个时间序列放入一个队列中。
+#
+# 4.定义一个线程函数 compare_thread()，在其中取出队列中的时间序列，调用 compare_ts_or_point() 函数进行比较，将结果保存到 result_list 中。
+#
+# 5.定义一个线程池集合，其中的每一个线程都是执行 compare_thread() 函数。
+#
+# 6.启动线程池，等待所有线程执行完毕。

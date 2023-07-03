@@ -5,12 +5,12 @@ from multiprocessing import Process
 from multiprocessing import Pool
 
 
-query_step_size_row = 1000  # 每次查询的行数，不包含count
-is_random_or_all_ts_compare = 'random'
-num_of_random_ts = 100
+query_step_size_row = 10000  # 每次查询的行数，不包含count
+is_random_or_all_ts_compare = 'random'  # random or all
+num_of_random_ts = 10
 
-a_host, a_port, a_user, a_pass = '127.0.0.1,6667,root,root'.split(',')
-b_host, b_port, b_user, b_pass = '127.0.0.1,6667,root,root'.split(',')
+a_host, a_port, a_user, a_pass = '172.20.31.15,6667,root,root'.split(',')
+b_host, b_port, b_user, b_pass = '172.20.31.15,6667,root,root'.split(',')
 
 session1 = Session(a_host, a_port, a_user, a_pass)
 session2 = Session(b_host, b_port, b_user, b_pass)
@@ -156,24 +156,6 @@ def get_ts_from_session_ts_list(session1_list):
     if is_random_or_all_ts_compare == 'random':
         ts_list = return_random_ts_list(ts_list)
     return ts_list
-
-
-# def compare_point_avg_ts_parallel(s1, s2, ts_list):
-#     def compare_point_avg_ts_helper(ts_list):
-#         for ts in ts_list:
-#             series_path, series_name = '.'.join(ts.split('.')[:-1]), ts.split('.')[-1]
-#             count_base_sql = f'select count({series_name}) from {series_path}'
-#             select_base_sql = f'select {series_name} from {series_path}'
-#             compare_ts_or_point(s1, s2, count_base_sql, select_base_sql)
-#
-#     ts_list_parts = [ts_list[i:i + 10] for i in range(0, len(ts_list), 10)]
-#     processes = []
-#     for ts_list_part in ts_list_parts:
-#         p = Process(target=compare_point_avg_ts_helper, args=(ts_list_part,))
-#         processes.append(p)
-#         p.start()
-#     for p in processes:
-#         p.join()
 
 
 def compare_point_avg_ts_helper(ts):
